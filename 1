@@ -105,7 +105,7 @@ function MovieDetailPage() {
                 {movie.synopsis || "暫無簡介"}
               </p>
 
-              {/* 🎯 新增：詳細資訊 (種類、導演、演員、語言) */}
+              {/* 🎯 詳細資訊：種類、導演、演員、語言 (全部從資料庫讀取) */}
               <div className="bg-neutral-800/50 p-4 rounded-lg border border-neutral-700 space-y-2">
                 <p className="text-gray-300">
                   <span className="font-bold text-white mr-2">電影種類:</span> 
@@ -121,7 +121,7 @@ function MovieDetailPage() {
                 </p>
                 <p className="text-gray-300">
                   <span className="font-bold text-white mr-2">語言:</span> 
-                  英語 / 日語 (字幕)
+                  {movie.language || '未知'} {/* 🎯 使用資料庫中的 language 欄位 */}
                 </p>
               </div>
             </div>
@@ -158,5 +158,3 @@ function MovieDetailPage() {
 }
 
 export default MovieDetailPage;
-
-
