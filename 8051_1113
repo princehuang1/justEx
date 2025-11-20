@@ -1,0 +1,206 @@
+; ==========================================================
+; 8051 LCD 鍵盤控制程式 (BF-MINILAB 專用)
+; 晶振 (Crystal): 22.1184 MHz
+; ==========================================================
+
+; ---------------------------------
+; 1. 硬體定義 (Hardware Defines)
+; ---------------------------------
+; LCD 控制埠
+E   EQU P1.2
+RW  EQU P1.1
+RS  EQU P1.0
+
+; 獨立按鍵埠 (P3)
+S1  EQU P3.0    ; 上
+S2  EQU P3.1    ; 下
+S3  EQU P3.2    ; 左
+S4  EQU P3.3    ; 右
+S5  EQU P3.4    ; 'A'
+S6  EQU P3.5    ; 'B'
+S7  EQU P3.6    ; 'C'
+S8  EQU P3.7    ; Enter (換行)
+
+; ---------------------------------
+; 2. 程式起始點
+; ---------------------------------
+START:
+    ; 2A. LCD 初始化
+    ACALL   DELAY5MS        ; 等待 LCD 開機
+    MOV     A,#00111100B    ; 功能設定: 8位元 / 雙列 / 5*10點 (3Ch)
+    ACALL   COMMAND
+    MOV     A,#00001110B    ; 顯示設定: 顯示ON / 游標ON / 游標不閃爍 (0Eh)
+    ACALL   COMMAND
+    MOV     A,#1            ; 清除螢幕 (01h)
+    ACALL   COMMAND
+    ACALL   DELAY2MS        ; 清除螢幕需要較長延遲
+    MOV     A,#10000000B    ; 設定 DD RAM 位址為 0 (第一行開頭)
+    ACALL   COMMAND
+
+; ---------------------------------
+; 3. 按鍵掃描主迴圈
+; ---------------------------------
+MAIN_LOOP:
+    JNB     S1, ACTION_S1   ; 檢查 S1 (上), JNB = Jump if Not Bit (如果 P3.0 是 0 就跳)
+    JNB     S2, ACTION_S2   ; 檢查 S2 (下)
+    JNB     S3, ACTION_S3   ; 檢查 S3 (左)
+    JNB     S4, ACTION_S4   ; 檢查 S4 (右)
+    JNB     S5, ACTION_S5   ; 檢查 S5 (A)
+    JNB     S6, ACTION_S6   ; 檢查 S6 (B)
+    JNB     S7, ACTION_S7   ; 檢查 S7 (C)
+    JNB     S8, ACTION_S8   ; 檢查 S8 (Enter)
+    SJMP    MAIN_LOOP       ; 沒有按鍵, 重新掃描
+
+; ---------------------------------
+; 4. 按鍵動作處理 (已加入「等待放開」邏輯)
+; ---------------------------------
+ACTION_S1:  ; 按下 S1 (上)
+    ACALL   DO_UP
+    ACALL   DELAY_DEBOUNCE      ; 按鍵彈跳延遲
+WAIT_S1_RELEASE:
+    JNB     S1, WAIT_S1_RELEASE ; 卡住, 等待 S1 放開 (變回 1)
+    SJMP    MAIN_LOOP           ; 放開後才跳回主迴圈
+    
+ACTION_S2:  ; 按下 S2 (下)
+    ACALL   DO_DOWN
+    ACALL   DELAY_DEBOUNCE
+WAIT_S2_RELEASE:
+    JNB     S2, WAIT_S2_RELEASE
+    SJMP    MAIN_LOOP
+
+ACTION_S3:  ; 按下 S3 (左)
+    ACALL   DO_LEFT
+    ACALL   DELAY_DEBOUNCE
+WAIT_S3_RELEASE:
+    JNB     S3, WAIT_S3_RELEASE
+    SJMP    MAIN_LOOP
+
+ACTION_S4:  ; 按下 S4 (右)
+    ACALL   DO_RIGHT
+    ACALL   DELAY_DEBOUNCE
+WAIT_S4_RELEASE:
+    JNB     S4, WAIT_S4_RELEASE
+    SJMP    MAIN_LOOP
+
+ACTION_S5:  ; 按下 S5 (A)
+    ACALL   DO_SHOW_A
+    ACALL   DELAY_DEBOUNCE
+WAIT_S5_RELEASE:
+    JNB     S5, WAIT_S5_RELEASE
+    SJMP    MAIN_LOOP
+
+ACTION_S6:  ; 按下 S6 (B)
+    ACALL   DO_SHOW_B
+    ACALL   DELAY_DEBOUNCE
+WAIT_S6_RELEASE:
+    JNB     S6, WAIT_S6_RELEASE
+    SJMP    MAIN_LOOP
+    
+ACTION_S7:  ; 按下 S7 (C)
+    ACALL   DO_SHOW_C
+    ACALL   DELAY_DEBOUNCE
+WAIT_S7_RELEASE:
+    JNB     S7, WAIT_S7_RELEASE
+    SJMP    MAIN_LOOP
+
+ACTION_S8:  ; 按下 S8 (Enter)
+    ACALL   DO_ENTER
+    ACALL   DELAY_DEBOUNCE
+WAIT_S8_RELEASE:
+    JNB     S8, WAIT_S8_RELEASE
+    SJMP    MAIN_LOOP
+
+; ---------------------------------
+; 5. 按鍵功能副程式
+; ---------------------------------
+DO_UP:
+    ; (Bonus 2, 暫不實作)
+    RET
+DO_DOWN:
+    ; (Bonus 2, 暫不實作)
+    RET
+DO_LEFT:
+    MOV     A, #10h     ; LCD 命令: 游標左移一格
+    ACALL   COMMAND
+    RET
+DO_RIGHT:
+    MOV     A, #14h     ; LCD 命令: 游標右移一格
+    ACALL   COMMAND
+    RET
+DO_SHOW_A:
+    MOV     A, #'A'
+    ACALL   SDATA
+    RET
+DO_SHOW_B:
+    MOV     A, #'B'
+    ACALL   SDATA
+    RET
+DO_SHOW_C:
+    MOV     A, #'C'
+    ACALL   SDATA
+    RET
+DO_ENTER:
+    ; 基本換行: 強制游標跳到第二行開頭
+    MOV     A, #0C0h    ; LCD 命令: 設定 DD RAM 位址為 40h (第二行 0C0h)
+    ACALL   COMMAND
+    RET
+
+; ---------------------------------
+; 6. LCD 與延遲副程式 (22.1184MHz)
+; ---------------------------------
+COMMAND:
+    MOV     P0,A
+    CLR     RS              ; RS=0 (命令)
+    CLR     RW              ; RW=0 (寫入)
+    SETB    E               ; E=1 (Enable 高)
+    CLR     E               ; E=0 (Enable 低，觸發)
+    ACALL   DELAY40US
+    RET
+    
+SDATA:
+    MOV     P0,A
+    SETB    RS              ; RS=1 (資料)
+    CLR     RW              ; RW=0 (寫入)
+    SETB    E               ; E=1 (Enable 高)
+    CLR     E               ; E=0 (Enable 低，觸發)
+    ACALL   DELAY40US
+    RET
+
+; --- 按鍵彈跳延遲 ---
+DELAY_DEBOUNCE:
+    ACALL   DELAY5MS
+    ACALL   DELAY5MS
+    ACALL   DELAY5MS    ; 總共 15ms 彈跳延遲
+    RET
+
+; --- LCD 時序延遲 (for 22.1184MHz) ---
+DELAY40US:
+    ; (1 + 2*36) * 0.5445us = 39.75us (接近 40us)
+    MOV     R1, #36
+    DJNZ    R1,$
+    RET
+
+DELAY1MS:
+    ; (1 + (1+2*228+2)*4) * 0.5445us = 1000.2us (接近 1ms)
+    MOV     R6, #4
+D1MS_OUTTER:
+    MOV     R7, #228
+    DJNZ    R7, $
+    DJNZ    R6, D1MS_OUTTER
+    RET
+
+DELAY2MS:
+    ACALL   DELAY1MS
+    ACALL   DELAY1MS
+    RET
+    
+DELAY5MS:
+    ACALL   DELAY1MS
+    ACALL   DELAY2MS
+    ACALL   DELAY2MS
+    RET
+
+; ---------------------------------
+; 程式結束
+; ---------------------------------
+END
