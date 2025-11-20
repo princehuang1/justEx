@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
+import { Link } from 'react-router-dom';
 
 // 🎯 這是商城頁面的篩選類別
 const storeCategories = [
@@ -9,62 +10,65 @@ const storeCategories = [
 ];
 
 // ----------------------------------------------------------------------
-// 假資料
+// 假資料 (已包含您最新的遊戲列表)
 // ----------------------------------------------------------------------
 const mockItems = [
     // 遊戲商城 (10個)
     { id: 1, name: '對馬戰鬼', category: 'Game', price: 1500, image: '/posters/對馬戰鬼.avif' },
-    { id: 2, name: '地平線：西域禁地', category: 'Game', price: 1790, image: '/posters/對馬戰鬼.avif' },
-    { id: 3, name: '漫威蜘蛛人：邁爾斯摩拉斯', category: 'Game', price: 1390, image: '/posters/對馬戰鬼.avif' },
-    { id: 4, name: '惡魔靈魂', category: 'Game', price: 1690, image: '/posters/對馬戰鬼.avif' },
-    { id: 5, name: '袋狼大進擊', category: 'Game', price: 990, image: '/posters/對馬戰鬼.avif' },
-    { id: 6, name: '秘境探險：盜賊傳奇', category: 'Game', price: 1190, image: '/posters/對馬戰鬼.avif' },
-    { id: 7, name: '死亡回歸', category: 'Game', price: 1490, image: '/posters/對馬戰鬼.avif' },
-    { id: 8, name: '最後生還者 二部曲', category: 'Game', price: 1090, image: '/posters/對馬戰鬼.avif' },
-    { id: 9, name: '對馬戰鬼 導演剪輯版', category: 'Game', price: 1890, image: '/posters/對馬戰鬼.avif' },
-    { id: 10, name: '戰神：諸神黃昏', category: 'Game', price: 1990, image: '/posters/對馬戰鬼.avif' },
+    { id: 2, name: '33號遠征隊', category: 'Game', price: 1790, image: '/posters/33號.avif' },
+    { id: 3, name: 'FF7 Rebirth', category: 'Game', price: 1390, image: '/posters/FF7Rebirth.avif' },
+    { id: 4, name: '地平線西域境地', category: 'Game', price: 1690, image: '/posters/地平線.avif' },
+    { id: 5, name: '尼爾 自動人形', category: 'Game', price: 990, image: '/posters/尼爾.avif' },
+    { id: 6, name: '惡靈古堡4', category: 'Game', price: 1190, image: '/posters/惡靈古堡4.avif' },
+    { id: 7, name: 'FF16', category: 'Game', price: 1490, image: '/posters/FF16.webp' },
+    { id: 8, name: 'Cyberpunk 2077', category: 'Game', price: 1090, image: '/posters/Cyberpunk 2077.avif' },
+    { id: 9, name: '空洞騎士', category: 'Game', price: 1890, image: '/posters/空洞騎士.avif' },
+    { id: 10, name: '艾爾登法環', category: 'Game', price: 1990, image: '/posters/艾爾登法環.webp' },
 
     // 電影周邊 (假資料)
-    { id: 11, name: '沙丘：弗雷曼戰服', category: 'Merchandise', price: 999, image: '/posters/Dune_uniform.jpg' },
-    { id: 12, name: '鏈鋸人立牌組', category: 'Merchandise', price: 450, image: '/posters/Chainsaw_stand.jpg' },
-    { id: 15, name: '阿凡達設定集', category: 'Merchandise', price: 1200, image: '/posters/avatar_wayofwater.jpeg' }, // 暫用海報當示意圖
-    { id: 16, name: '蜘蛛人馬克杯', category: 'Merchandise', price: 350, image: '/posters/spiderman_across.jpg' }, // 暫用海報當示意圖
-    { id: 17, name: '超級瑪利歐帽子', category: 'Merchandise', price: 590, image: '/posters/super-mario-bros-movie-2.webp' }, // 暫用海報當示意圖
-
+    { id: 11, name: '波奇塔爆米花桶', category: 'Merchandise', price: 999, image: '/posters/波奇塔爆米花桶.png' },
+    { id: 12, name: '蕾潔海報', category: 'Merchandise', price: 450, image: '/posters/蕾潔海報.jpg' },
+    { id: 15, name: '鏈鋸人明信片', category: 'Merchandise', price: 1200, image: '/posters/明信片.webp' }, 
+    
     // 餐飲 (假資料)
-    { id: 13, name: '豪華套餐兌換券', category: 'Concession', price: 500, image: '/posters/豪華套餐.jpg' },
-    { id: 14, name: '基本套餐兌換券', category: 'Concession', price: 220, image: '/posters/基本套餐.jpg' },
-    { id: 18, name: '爆米花桶', category: 'Concession', price: 250, image: '/posters/爆米花.avif' },
-    { id: 19, name: '家庭分享餐', category: 'Concession', price: 880, image: '/posters/炸雞盒.jpg' },
-    { id: 20, name: '雙人可樂組', category: 'Concession', price: 100, image: '/posters/可樂.jpg' },
+    { id: 13, name: '豪華套餐', category: 'Concession', price: 500, image: '/posters/豪華套餐.jpg' },
 ];
 
-// 遊戲商城使用的卡片組件 (保持不變)
+// 遊戲商城使用的卡片組件 (圖片是正方形，文字在圖片下方)
 const GameItemCard = ({ item }) => (
-  <div className="group cursor-pointer relative rounded-xl overflow-hidden shadow-lg hover:shadow-purple-500/50 transition-all duration-300 transform hover:-translate-y-1">
-    <img
-        src={item.image || 'https://via.placeholder.com/400x400?text=Game'}
-        alt={item.name}
-        className="w-full aspect-square object-cover group-hover:scale-105 transition-transform duration-500" 
-    />
-    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex flex-col justify-end p-4">
-      <h3 className="text-white text-sm md:text-base font-bold truncate group-hover:text-purple-400 transition-colors text-left">
+  // 🎯 外部容器不使用 absolute 定位，將文字放在圖片下方
+  <div className="group cursor-pointer transform hover:-translate-y-1 transition duration-300">
+    
+    {/* 圖片區域 - 🎯 1:1 正方形, 大圓角 */}
+    <div className="relative w-full aspect-square rounded-xl overflow-hidden shadow-lg">
+        <img
+            src={item.image || 'https://via.placeholder.com/400x400?text=Game'}
+            alt={item.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+        />
+    </div>
+    
+    {/* 文字區域 - 🎯 移到圖片下方，並設定左對齊，保持黑紫風格 */}
+    <div className="mt-2 text-left">
+      <h3 className="text-white text-base font-bold truncate group-hover:text-purple-400 transition-colors">
         {item.name}
       </h3>
-      <p className="text-gray-300 text-xs mt-1 text-left">$ {item.price}</p>
+      <p className="text-gray-400 text-sm mt-1">$ {item.price}</p>
     </div>
   </div>
 );
 
-// 🎯 一般商品卡片 (周邊、餐飲用) - 已更新
+// 🎯 一般商品卡片 (周邊、餐飲用) - 統一為 1:1 正方形
 const StoreItemCard = ({ item }) => (
     <div className="bg-neutral-800 rounded-xl overflow-hidden shadow-xl hover:shadow-purple-500/30 transition-all duration-300">
+      
+      {/* 圖片區域 - 🎯 1:1 正方形 */}
       <img
         src={item.image || 'https://via.placeholder.com/400x400?text=Item'}
         alt={item.name}
-        // 🎯 修改：這裡改為 aspect-square (1:1 正方形)，原本是 aspect-[4/3]
         className="w-full aspect-square object-cover" 
       />
+      
       <div className="p-4">
         <h3 className="text-white text-lg font-bold mb-1 truncate">{item.name}</h3>
         <p className="text-purple-400 text-base mb-3">$ {item.price}</p>
@@ -80,6 +84,7 @@ function StorePage() {
   const [activeFilter, setActiveFilter] = useState(storeCategories[0].status); 
   const [filteredItems, setFilteredItems] = useState([]);
   
+  // 模擬過濾邏輯
   useEffect(() => {
     const filterData = mockItems.filter(item => item.category === activeFilter);
     setFilteredItems(filterData);
@@ -115,8 +120,8 @@ function StorePage() {
         </div>
 
         {/* 3. 商品列表網格 */}
-        {/* 🎯 修改：現在所有分類都統一使用 5 欄佈局 (lg:grid-cols-5) */}
-        <div className="grid gap-6 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+        {/* 🎯 所有分類統一使用 5 欄佈局 (lg:grid-cols-5) */}
+        <div className="grid gap-6 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
           {filteredItems.length > 0 ? (
             filteredItems.map((item) => (
                 activeFilter === 'Game' 
