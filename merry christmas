@@ -1,0 +1,234 @@
+;--------------------------------------------------------
+; Lab06 Sound Control - Merry Christmas (Assembly Version)
+; 修正版: 移除重複定義的 SFR，改用 EQU 語法
+;--------------------------------------------------------
+
+;--- 移除重複定義 ---
+; 您的組譯器已經內建了 P2, TMOD, TH0 等定義
+; 所以這裡不需要再寫一遍，否則會報錯
+
+;--- 特殊定義 (針對 C8051F040) ---
+; 如果組譯器不認識 WDTCN，我們用 EQU 定義位址
+WDTCN   EQU     0FFH 
+
+;--- 硬體接腳定義 ---
+; 將 BIT 改為 EQU，相容性較高
+BUZZER  EQU     P2.7
+
+;--- 變數定義 (使用內部 RAM 30H-33H) ---
+CURRENT_N       EQU 30H ; 存放目前的半週期計數值 n
+T0_COUNTER      EQU 31H ; Timer0 的軟體計數器
+RHYTHM_COUNT    EQU 32H ; 節奏倒數計數器
+SONG_INDEX      EQU 33H ; 目前播放到第幾個音
+
+;--- 常數定義 ---
+; Timer 0 (100us Base): 256 - 184 = 72 (0x48)
+T0_RELOAD       EQU 048H
+; Timer 1 (10ms Rhythm): 65536 - 18433 = 47103 (0xB7FF)
+T1_TH_VAL       EQU 0B7H
+T1_TL_VAL       EQU 0FFH
+
+;--- 音階參數 n (Base 100us) ---
+L_SO    EQU 26
+L_LA    EQU 23
+L_SI    EQU 20
+M_DO    EQU 19
+M_RE    EQU 17
+M_MI    EQU 15
+M_FA    EQU 14
+REST    EQU 0
+
+;--------------------------------------------------------
+; 重置向量與中斷向量 (Interrupt Vectors)
+;--------------------------------------------------------
+    ORG 0000H
+    LJMP MAIN       ; 程式進入點
+
+    ORG 000BH
+    LJMP T0_ISR     ; Timer 0 中斷入口
+
+    ORG 001BH
+    LJMP T1_ISR     ; Timer 1 中斷入口
+
+;--------------------------------------------------------
+; 主程式 (Main Program)
+;--------------------------------------------------------
+    ORG 0100H
+MAIN:
+    ; 1. 關閉看門狗 (針對 C8051F040)
+    ; 如果您的板子不是 C8051F040，這兩行可能會無效，但不影響程式執行
+    MOV WDTCN, #0DEH
+    MOV WDTCN, #0ADH
+
+    ; 2. 初始化變數
+    MOV T0_COUNTER, #0
+    MOV SONG_INDEX, #0
+    MOV CURRENT_N, #0  ; 初始靜音
+    MOV RHYTHM_COUNT, #1 ; 讓它立刻進中斷讀取第一個音
+
+    ; 3. 設定 Timer
+    ; TMOD: Timer1=Mode1(16bit), Timer0=Mode2(8bit auto-reload)
+    MOV TMOD, #12H 
+    
+    ; 設定 Timer0 初值
+    MOV TH0, #T0_RELOAD
+    MOV TL0, #T0_RELOAD
+    
+    ; 設定 Timer1 初值
+    MOV TH1, #T1_TH_VAL
+    MOV TL1, #T1_TL_VAL
+
+    ; 4. 開啟中斷
+    SETB ET0    ; Enable Timer0 Interrupt
+    SETB ET1    ; Enable Timer1 Interrupt
+    SETB EA     ; Enable All Interrupts
+
+    ; 5. 啟動計時器
+    SETB TR0
+    SETB TR1
+
+    ; 6. 無窮迴圈 (Idle)
+LOOP:
+    SJMP LOOP   ; 原地跳轉，等待中斷發生
+
+;--------------------------------------------------------
+; Timer 0 ISR: 音頻產生 (Frequency Generation)
+;--------------------------------------------------------
+T0_ISR:
+    PUSH ACC            ; 保護累積器
+    PUSH PSW            ; 保護狀態暫存器
+
+    ; 檢查是否為靜音 (REST)
+    MOV A, CURRENT_N
+    JZ  MUTE_OFF        ; 如果 n=0，跳去關閉蜂鳴器
+
+    ; 軟體計數器遞增
+    INC T0_COUNTER
+    MOV A, T0_COUNTER
+    CJNE A, CURRENT_N, CHECK_TOGGLE ; 比較 T0_COUNTER 與 CURRENT_N
+
+    ; --- 達到計數值，反轉 P2.7 ---
+TOGGLE_NOW:
+    MOV T0_COUNTER, #0  ; 歸零計數器
+    CPL BUZZER          ; Toggle P2.7
+    JMP T0_EXIT
+
+CHECK_TOGGLE:
+    ; 如果 CJNE 跳轉過來，代表不相等
+    ; 檢查是小於還是大於 (Carry Flag)
+    ; 如果 Counter < N (C=1)，還沒到時間，直接離開
+    JC T0_EXIT          
+    ; 如果 Counter > N (C=0)，代表錯過了或剛好相等(前面處理了)，重置
+    JMP TOGGLE_NOW      
+
+MUTE_OFF:
+    SETB BUZZER         ; 靜音時確保 Buzzer 不導通 (High Impedance)
+    
+T0_EXIT:
+    POP PSW
+    POP ACC
+    RETI
+
+;--------------------------------------------------------
+; Timer 1 ISR: 節奏控制 (Rhythm Control)
+;--------------------------------------------------------
+T1_ISR:
+    PUSH ACC
+    PUSH PSW
+    PUSH DPH
+    PUSH DPL
+
+    ; 重載 Timer 1 (Mode 1 需要手動重載)
+    MOV TH1, #T1_TH_VAL
+    MOV TL1, #T1_TL_VAL
+
+    ; 檢查節奏計數
+    MOV A, RHYTHM_COUNT
+    JZ  LOAD_NEW_NOTE   ; 如果數到 0，載入新音符
+    DEC RHYTHM_COUNT    ; 否則倒數
+
+    ; --- Bonus 2: 斷字效果 (Staccato) ---
+    ; 檢查 RHYTHM_COUNT 是否小於 5 (最後 50ms)
+    MOV A, RHYTHM_COUNT
+    CJNE A, #05H, CHECK_STACCATO 
+CHECK_STACCATO:
+    JNC T1_EXIT         ; 如果 Count >= 5 (C=0)，不做事
+    
+    ; 如果 Count < 5，強制靜音
+    MOV CURRENT_N, #REST
+    JMP T1_EXIT
+
+LOAD_NEW_NOTE:
+    ; 1. 讀取音高 (Tone)
+    MOV DPTR, #TABLE_TONE
+    MOV A, SONG_INDEX
+    MOVC A, @A+DPTR     ; 查表
+    MOV CURRENT_N, A    ; 存入音頻變數
+
+    ; 2. 讀取節奏 (Rhythm)
+    MOV DPTR, #TABLE_RHYTHM
+    MOV A, SONG_INDEX
+    MOVC A, @A+DPTR
+    MOV RHYTHM_COUNT, A
+
+    ; 檢查是否為結束標記 (0)
+    MOV A, RHYTHM_COUNT
+    JNZ NEXT_INDEX
+    
+    ; 如果讀到 0，重置 Index 到頭
+    MOV SONG_INDEX, #0
+    ; 重新讀取第一顆音 (避免延遲)
+    MOV DPTR, #TABLE_TONE
+    CLR A
+    MOVC A, @A+DPTR
+    MOV CURRENT_N, A
+    MOV DPTR, #TABLE_RHYTHM
+    CLR A
+    MOVC A, @A+DPTR
+    MOV RHYTHM_COUNT, A
+    JMP T1_EXIT
+
+NEXT_INDEX:
+    INC SONG_INDEX      ; 準備下一次讀下一個音
+
+T1_EXIT:
+    POP DPL
+    POP DPH
+    POP PSW
+    POP ACC
+    RETI
+
+;--------------------------------------------------------
+; 查表資料 (Lookup Tables)
+;--------------------------------------------------------
+TABLE_TONE:
+    ; Phrase 1
+    DB L_SO
+    DB M_DO, M_DO, M_RE, M_DO, L_SI, L_LA, L_LA
+    ; Phrase 2
+    DB L_LA
+    DB M_RE, M_RE, M_MI, M_RE, M_DO, L_SI, L_SO
+    ; Phrase 3
+    DB L_SO
+    DB M_MI, M_MI, M_FA, M_MI, M_RE, M_DO, L_LA
+    ; Phrase 4
+    DB L_SO, L_SO
+    DB L_LA, M_RE, L_SI, M_DO
+    DB REST 
+
+TABLE_RHYTHM:
+    ; Phrase 1
+    DB 50
+    DB 50, 25, 25, 25, 25, 50, 50
+    ; Phrase 2
+    DB 50
+    DB 50, 25, 25, 25, 25, 50, 50
+    ; Phrase 3
+    DB 50
+    DB 50, 25, 25, 25, 25, 50, 50
+    ; Phrase 4
+    DB 25, 25
+    DB 50, 50, 50, 100
+    DB 0 ; 結束標記
+
+    END
