@@ -31,8 +31,8 @@ const getBgClass = (style) => {
     case 'gold': return 'bg-gradient-to-r from-yellow-600 to-yellow-800 text-yellow-100 shadow-yellow-800/10';
     case 'silver': return 'bg-gradient-to-r from-gray-400 to-gray-600 text-white shadow-gray-400/40';
     
-    // 淡古銅色
-    case 'bronze': return 'bg-gradient-to-r from-[#e6c4a8] to-[#c49a7a] text-amber-900 shadow-orange-900/10';
+    // 🔥 修改這裡：改回深銅色漸層
+    case 'bronze': return 'bg-gradient-to-r from-[#b07e4c] to-[#855328] text-yellow-100 shadow-amber-500/20';
     
     default: return 'bg-neutral-700 text-white shadow-purple-500/20';
   }
@@ -43,7 +43,7 @@ const getTextClass = (style) => {
     switch (style) {
       case 'gold': return 'text-yellow-100';
       case 'silver': return 'text-gray-100';
-      case 'bronze': return 'text-amber-950'; 
+      case 'bronze': return 'text-orange-100'; // 深色背景配淺色字
       default: return 'text-white';
     }
 };
@@ -52,7 +52,7 @@ const getSubTextClass = (style) => {
     switch (style) {
       case 'gold': return 'text-yellow-200';
       case 'silver': return 'text-gray-200';
-      case 'bronze': return 'text-amber-900/80';
+      case 'bronze': return 'text-orange-200'; // 深色背景配淺色字
       default: return 'text-gray-400';
     }
 };
