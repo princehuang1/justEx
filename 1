@@ -1,428 +1,248 @@
-import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
-// 如果環境中沒有 react-router-dom，這裡使用模擬的 Link
-// import { Link } from 'react-router-dom'; 
+import React, { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import Navbar from '../components/Navbar';
 
-// --- 模擬 Router Link (為了確保在預覽環境能執行，若您有安裝 react-router-dom 請換回上面的 import) ---
-const Link = ({ to, children, className, onClick }) => (
-  <a href={to} className={className} onClick={onClick}>
-    {children}
-  </a>
-);
+function PaymentPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
 
-// --- 模擬 Navbar ---
-const Navbar = () => (
-  <nav className="bg-black/90 text-white p-4 border-b border-gray-800 sticky top-0 z-[1000] backdrop-blur-md">
-    <div className="container mx-auto flex justify-between items-center px-4">
-      <div className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">
-        MOVIE TIME
-      </div>
-      <div className="space-x-6 text-sm font-medium hidden md:block">
-        <a href="#" className="hover:text-purple-400 transition-colors">電影介紹</a>
-        <a href="#" className="hover:text-purple-400 transition-colors">場次查詢</a>
-        <a href="#" className="hover:text-purple-400 transition-colors">影城資訊</a>
-      </div>
-    </div>
-  </nav>
-);
+  // 模擬會員狀態 (未來這裡可以接 AuthContext)
+  // 目前預設為 false (非會員)，所以會顯示輸入姓名信箱的欄位
+  const isMember = false; 
 
-// --- 輔助函式：將分鐘轉為 "2h 46m" 格式 ---
-const formatDuration = (minutes) => {
-  if (!minutes) return 'N/A';
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return `${h}h ${m}m`;
-};
-
-// --- 更新後的 ShowtimeMovieCard (整合您的最新代碼與格式需求) ---
-function ShowtimeMovieCard({ movie, onError, theatreId, selectedDate }) {
-  const language = "英語 / 日語 (字幕)"; 
-  // 模擬場次時間 (實際專案可能來自 API)
-  const mockTimes = ["10:30", "13:15", "15:40", "18:20", "21:00"];
-
-  const [selectedTime, setSelectedTime] = useState(null);
-
-  const handleTicketClick = (e) => {
-    if (!selectedTime) {
-      e.preventDefault();
-      if (onError) onError(); 
-    } else {
-        alert(`已選擇: ${movie.movieName || movie.title}\n時間: ${selectedTime}\n日期: ${selectedDate}`);
-    }
+  const bookingData = location.state || {
+    totalPrice: 0,
+    movie: { movieName: '未知電影' },
+    theater: { name: '' },
+    date: '',
+    time: ''
   };
 
-  // 確保使用正確的欄位名稱 (相容 movieName 或 title)
-  const title = movie.movieName || movie.title;
-  const duration = movie.movieDurationMinutes || movie.runtime || 0;
-  const genre = movie.movieType || movie.genre || "一般";
+  const [formData, setFormData] = useState({
+    // 新增：購買人資訊
+    guestName: '',
+    guestEmail: '',
+    // 原有：信用卡資訊
+    cardNumber: '',
+    cardName: '',
+    expiry: '',
+    cvv: ''
+  });
 
-  return (
-    <div className="bg-neutral-800 rounded-xl overflow-hidden shadow-xl flex flex-col md:flex-row transition-all duration-300 ease-in-out hover:shadow-purple-500/30 border border-neutral-700 hover:border-purple-500/50">
+  const [errors, setErrors] = useState({});
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
+  };
+
+  const validateForm = () => {
+    const newErrors = {};
+
+    // 1. 驗證購買人資訊 (僅在非會員時驗證)
+    if (!isMember) {
+      if (!formData.guestName || formData.guestName.trim().length < 2) newErrors.guestName = '請輸入完整姓名';
+      // 簡易 Email Regex 驗證
+      const emailRegex = /\S+@\S+\.\S+/;
+      if (!formData.guestEmail || !emailRegex.test(formData.guestEmail)) newErrors.guestEmail = '請輸入有效的電子信箱';
+    }
+
+    // 2. 驗證信用卡資訊
+    if (formData.cardNumber.length < 10) newErrors.cardNumber = '卡號長度不足';
+    if (formData.cardName.length < 2) newErrors.cardName = '請輸入持卡人姓名';
+    if (formData.expiry.length < 4) newErrors.expiry = '格式錯誤 (MM/YY)';
+    if (formData.cvv.length < 3) newErrors.cvv = '請輸入 3 碼安全碼';
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handlePay = (e) => {
+    e.preventDefault();
+    if (validateForm()) {
+      setIsProcessing(true);
       
-      <div className="w-full md:w-1/4 flex-shrink-0 h-64 md:h-auto relative"> 
-        <img 
-          src={movie.posterUrl || "https://placehold.co/300x450/2a2a2a/FFF?text=No+Poster"} 
-          alt={title}
-          className="w-full h-full object-cover" 
-        />
-      </div>
-
-      <div className="flex-grow px-5 md:px-6 py-4 flex flex-col justify-between">
-        
-        <div>
-          <h2 className="text-2xl md:text-3xl font-bold text-white mb-3">{title}</h2> 
-          
-          {/* 修改處：將片長移入詳細資訊區塊，置於第一位，並使用 formatDuration 轉換格式 */}
-          <div className="text-sm text-gray-300 space-y-2 mb-0"> 
-            <p className="flex items-center">
-                <span className="font-semibold text-purple-400 w-20">片長:</span> 
-                <span className="text-white font-medium">{formatDuration(duration)}</span>
-            </p>
-            <p className="flex items-center">
-                <span className="font-semibold text-gray-400 w-20">電影種類:</span> 
-                {genre}
-            </p>
-            <p className="flex items-center">
-                <span className="font-semibold text-gray-400 w-20">導演:</span> 
-                {movie.director || 'N/A'}
-            </p>
-            <p className="flex items-center">
-                <span className="font-semibold text-gray-400 w-20">演員:</span> 
-                <span className="truncate block flex-1">{movie.actors || 'N/A'}</span>
-            </p>
-            <p className="flex items-center">
-                <span className="font-semibold text-gray-400 w-20">語言:</span> 
-                {language}
-            </p>
-          </div>
-
-          <div className="mt-4 border-t border-neutral-700 pt-3">
-             <p className="text-xs text-gray-500 mb-2">選擇場次 ({selectedDate})：</p>
-             <div className="flex flex-wrap gap-2">
-               {mockTimes.map((time, index) => (
-                 <button 
-                   key={index}
-                   onClick={() => setSelectedTime(time)} 
-                   className={`
-                     text-xs py-2 px-4 rounded-lg transition-all duration-200 border
-                     ${selectedTime === time 
-                       ? 'bg-purple-600 text-white font-bold shadow-lg border-purple-500 transform scale-105' 
-                       : 'bg-neutral-700 text-gray-200 border-neutral-600 hover:bg-neutral-600 hover:border-gray-400'
-                     }
-                   `}
-                 >
-                   {time}
-                 </button>
-               ))}
-             </div>
-          </div>
-        </div>
-        
-        <div className="flex space-x-4 mt-6 md:ml-auto">
-          <Link 
-            to={`/movie/${movie.movieId}`}
-            onClick={handleTicketClick} 
-            className="flex-1 md:flex-none text-center bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-8 rounded-full transition duration-300 text-sm shadow-lg hover:shadow-purple-500/50"
-          >
-            取得門票
-          </Link>
-          <button className="flex-1 md:flex-none bg-transparent border border-gray-500 text-gray-300 hover:border-white hover:text-white font-bold py-2 px-8 rounded-full transition duration-300 text-sm">
-            觀看預告片
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// --- 輔助資料 ---
-const theatresData = [
-  { id: 1, name: '台北信義影城' },
-  { id: 2, name: '台北中山影城' },
-  { id: 3, name: '新北板橋影城' },
-];
-
-// 假資料 (若 API 失敗時使用)
-const MOCK_MOVIES = [
-  { movieId: 101, movieName: '沙丘：第二部', movieDurationMinutes: 166, movieType: '科幻 / 冒險', director: '丹尼·維勒納夫', actors: '提摩西·夏勒梅, 辛蒂亞', posterUrl: 'https://image.tmdb.org/t/p/w500/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg' },
-  { movieId: 102, movieName: '哥吉拉與金剛：新帝國', movieDurationMinutes: 115, movieType: '動作 / 科幻', director: '亞當·溫高德', actors: '雷貝卡·霍爾, 布萊恩·泰瑞·亨利', posterUrl: 'https://image.tmdb.org/t/p/w500/tMefBSflR6PGQLv7WvFPpKLZkyk.jpg' },
-  { movieId: 103, movieName: '功夫熊貓 4', movieDurationMinutes: 94, movieType: '動畫 / 喜劇', director: '麥克·米契', actors: '傑克·布萊克, 奧卡菲娜', posterUrl: 'https://image.tmdb.org/t/p/w500/kDp1vUBnMpe8q4rUEj-AdPENk91q.jpg' },
-];
-
-function ShowtimePage() {
-  const [movies, setMovies] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [alertMessage, setAlertMessage] = useState(null);
-
-  // --- 篩選狀態 ---
-  const [selectedTheatre, setSelectedTheatre] = useState(theatresData[0].id);
-  const [selectedMovieId, setSelectedMovieId] = useState(""); // 新增：選擇的電影ID
-
-  const handleSelectionError = () => {
-    setAlertMessage("請先選擇時間");
-    setTimeout(() => {
-      setAlertMessage(null);
-    }, 3000);
+      // 模擬 API 呼叫時間
+      setTimeout(() => {
+        setIsProcessing(false);
+        const buyerName = isMember ? "親愛的會員" : formData.guestName;
+        alert(`付款成功！\n${buyerName} 您好，總金額 $${bookingData.totalPrice}\n電子票券已寄送至您的信箱：${isMember ? '(會員信箱)' : formData.guestEmail}`);
+        navigate('/'); 
+      }, 1500);
+    }
   };
 
-  // --- 日期選擇器邏輯 ---
-  const today = new Date();
-  const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const maxAllowedDate = new Date(todayZero); 
-  maxAllowedDate.setDate(todayZero.getDate() + 30); 
-
-  const [showCalendar, setShowCalendar] = useState(false);
-  const [selectedDateObject, setSelectedDateObject] = useState(today);
-  const [viewYear, setViewYear] = useState(today.getFullYear());
-  const [viewMonth, setViewMonth] = useState(today.getMonth());
-  const calendarRef = useRef(null);
-
-  // 點擊外部關閉日曆
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (calendarRef.current && !calendarRef.current.contains(event.target)) {
-        setShowCalendar(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [calendarRef]);
-
-  const monthOptions = [];
-  for (let i = 0; i < 2; i++) {
-    const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
-    monthOptions.push({
-      year: d.getFullYear(),
-      month: d.getMonth(),
-      label: `${d.getFullYear()}年 ${d.getMonth() + 1}月`
-    });
+  if (!location.state) {
+    return (
+        <div className="min-h-screen bg-neutral-900 text-white flex items-center justify-center flex-col">
+            <Navbar />
+            <h2 className="text-2xl mb-4 mt-20">無效的付款頁面</h2>
+            <button onClick={() => navigate('/')} className="text-purple-400 underline">回首頁</button>
+        </div>
+    );
   }
 
-  const handleMonthChange = (e) => {
-    const [y, m] = e.target.value.split('-');
-    setViewYear(parseInt(y));
-    setViewMonth(parseInt(m));
-  };
-
-  const handleDateClick = (day) => {
-    const newDate = new Date(viewYear, viewMonth, day);
-    if (isDateDisabled(day)) return;
-    setSelectedDateObject(newDate);
-    setShowCalendar(false); 
-  };
-
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay();
-  const blanks = Array.from({ length: firstDayOfWeek }, (_, i) => i);
-  const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-
-  const isDateDisabled = (day) => {
-    const checkDate = new Date(viewYear, viewMonth, day);
-    return checkDate < todayZero || checkDate > maxAllowedDate;
-  };
-
-  const isSelected = (day) => {
-    return (
-      selectedDateObject.getDate() === day &&
-      selectedDateObject.getMonth() === viewMonth &&
-      selectedDateObject.getFullYear() === viewYear
-    );
-  };
-
-  const formattedSelectedDate = `${selectedDateObject.getFullYear()}/${selectedDateObject.getMonth() + 1}/${selectedDateObject.getDate()}`;
-
-  // --- API 獲取電影資料 ---
-  useEffect(() => {
-    setLoading(true);
-    // 這裡保留您的 API 網址，並加上錯誤處理回退到假資料，方便預覽
-    axios.get('http://localhost:4000/api/movies?status=Now Playing')
-      .then(response => {
-        setMovies(response.data);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error("API 連線失敗，切換至模擬資料模式:", err);
-        setMovies(MOCK_MOVIES);
-        setLoading(false);
-      });
-  }, []);
-
-  // --- 篩選電影邏輯 ---
-  // 如果下拉選單選了特定電影，只顯示該電影；否則顯示全部
-  const filteredMovies = selectedMovieId 
-    ? movies.filter(m => String(m.movieId) === String(selectedMovieId))
-    : movies;
-
   return (
-    <div className="min-h-screen bg-neutral-900 text-gray-100 font-sans relative pb-20">
-      {/* Alert 提示 */}
-      {alertMessage && (
-        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-8 py-3 rounded-full z-[9999] font-bold shadow-2xl animate-bounce flex items-center gap-2">
-           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-           </svg>
-           {alertMessage}
-        </div>
-      )}
-
+    <div className="min-h-screen bg-neutral-900 text-gray-100 font-sans flex flex-col">
       <Navbar />
-      
-      <main className="container mx-auto px-4 md:px-20 py-8">
-        
-        <h1 className="text-4xl font-bold text-white mb-8 border-l-4 border-purple-600 pl-4">場次查詢</h1>
 
-        {/* --- 篩選器區塊：三個並排 (Flex-col on mobile, Flex-row on desktop) --- */}
-        <div className="flex flex-col lg:flex-row justify-between items-start mb-10 gap-4 bg-neutral-800 p-6 rounded-xl border border-neutral-700 shadow-xl">
+      <main className="flex-grow container mx-auto px-6 md:px-20 py-12 flex flex-col items-center">
+        <h1 className="text-3xl font-bold text-white mb-8">結帳付款</h1>
+
+        <div className="w-full max-w-2xl">
           
-          {/* 1. 選擇影城 */}
-          <div className="w-full lg:w-1/3">
-            <label htmlFor="theatre-select" className="block text-sm font-medium text-purple-400 mb-2 uppercase tracking-wider">
-              1. 選擇影城
-            </label>
-            <div className="relative">
-                <select
-                id="theatre-select"
-                value={selectedTheatre}
-                onChange={(e) => setSelectedTheatre(Number(e.target.value))}
-                className="w-full bg-neutral-900 border border-neutral-600 hover:border-purple-500 rounded-lg py-3 px-4 text-white appearance-none focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors cursor-pointer"
-                >
-                {theatresData.map(theatre => (
-                    <option key={theatre.id} value={theatre.id}>
-                    {theatre.name}
-                    </option>
-                ))}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
-                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+          <div className="bg-neutral-800 p-8 rounded-2xl shadow-xl border border-neutral-700">
+            <form onSubmit={handlePay} className="space-y-8" autoComplete="off">
+              
+              {/* ========================================================= */}
+              {/* 區塊 1: 購買人資訊 (僅非會員顯示) */}
+              {/* ========================================================= */}
+              {!isMember && (
+                <div className="border-b border-neutral-700 pb-8 animate-fade-in">
+                  <h2 className="text-xl font-bold text-white mb-6 flex items-center">
+                    <span className="w-2 h-6 bg-blue-500 mr-3 rounded-full"></span>
+                    購買人資訊
+                  </h2>
+                  <div className="space-y-6">
+                    <div>
+                      <label className="block text-gray-400 text-sm mb-2">真實姓名 <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        name="guestName"
+                        placeholder="請輸入您的真實姓名"
+                        value={formData.guestName}
+                        onChange={handleChange}
+                        className={`w-full bg-neutral-900 border ${errors.guestName ? 'border-red-500' : 'border-neutral-600'} rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all`}
+                      />
+                      {errors.guestName && <p className="text-red-500 text-xs mt-1">{errors.guestName}</p>}
+                    </div>
+                    <div>
+                      <label className="block text-gray-400 text-sm mb-2">電子信箱 (接收票券用) <span className="text-red-500">*</span></label>
+                      <input
+                        type="email"
+                        name="guestEmail"
+                        placeholder="example@email.com"
+                        value={formData.guestEmail}
+                        onChange={handleChange}
+                        className={`w-full bg-neutral-900 border ${errors.guestEmail ? 'border-red-500' : 'border-neutral-600'} rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all`}
+                      />
+                      {errors.guestEmail && <p className="text-red-500 text-xs mt-1">{errors.guestEmail}</p>}
+                    </div>
+                  </div>
                 </div>
-            </div>
-          </div>
+              )}
 
-          {/* 2. 選擇電影 (新增的下拉式選單) */}
-          <div className="w-full lg:w-1/3">
-            <label htmlFor="movie-select" className="block text-sm font-medium text-purple-400 mb-2 uppercase tracking-wider">
-              2. 選擇電影
-            </label>
-            <div className="relative">
-                <select
-                id="movie-select"
-                value={selectedMovieId}
-                onChange={(e) => setSelectedMovieId(e.target.value)}
-                className="w-full bg-neutral-900 border border-neutral-600 hover:border-purple-500 rounded-lg py-3 px-4 text-white appearance-none focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors cursor-pointer"
-                >
-                <option value="">所有電影</option>
-                {movies.map(movie => (
-                    <option key={movie.movieId} value={movie.movieId}>
-                    {movie.movieName || movie.title}
-                    </option>
-                ))}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
-                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                </div>
-            </div>
-          </div>
+              {/* ========================================================= */}
+              {/* 區塊 2: 信用卡資訊 */}
+              {/* ========================================================= */}
+              <div>
+                <h2 className="text-xl font-bold text-white mb-6 flex items-center">
+                  <span className="w-2 h-6 bg-purple-600 mr-3 rounded-full"></span>
+                  信用卡資訊
+                </h2>
 
-          {/* 3. 選擇日期 (自定義下拉選單) */}
-          <div className="w-full lg:w-1/3 relative" ref={calendarRef}>
-            <label className="block text-sm font-medium text-purple-400 mb-2 uppercase tracking-wider">
-              3. 選擇日期
-            </label>
-            
-            <button 
-              onClick={() => setShowCalendar(!showCalendar)}
-              className="w-full bg-neutral-900 border border-neutral-600 hover:border-purple-500 rounded-lg py-3 px-4 text-left text-white focus:outline-none focus:ring-2 focus:ring-purple-500 flex justify-between items-center transition-colors"
-            >
-              <span>{formattedSelectedDate}</span>
-              <svg className={`h-5 w-5 text-gray-400 transition-transform ${showCalendar ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </button>
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-gray-400 text-sm mb-2">信用卡號碼</label>
+                    <input
+                      type="text"
+                      name="cardNumber"
+                      placeholder="0000 0000 0000 0000"
+                      value={formData.cardNumber}
+                      onChange={handleChange}
+                      maxLength={19}
+                      className={`w-full bg-neutral-900 border ${errors.cardNumber ? 'border-red-500' : 'border-neutral-600'} rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all`}
+                    />
+                    {errors.cardNumber && <p className="text-red-500 text-xs mt-1">{errors.cardNumber}</p>}
+                  </div>
 
-            {showCalendar && (
-              <div className="absolute top-full left-0 mt-2 w-full z-50 bg-neutral-800 border border-neutral-600 rounded-lg shadow-2xl p-4 animate-fade-in-down">
-                
-                <div className="mb-4">
-                  <select 
-                    className="w-full bg-neutral-900 border border-neutral-600 rounded px-3 py-2 text-white focus:ring-1 focus:ring-purple-500"
-                    onChange={handleMonthChange}
-                    value={`${viewYear}-${viewMonth}`}
-                  >
-                    {monthOptions.map(opt => (
-                      <option key={`${opt.year}-${opt.month}`} value={`${opt.year}-${opt.month}`}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                  <div>
+                    <label className="block text-gray-400 text-sm mb-2">持卡人姓名</label>
+                    <input
+                      type="text"
+                      name="cardName"
+                      placeholder="與卡片正面相同"
+                      value={formData.cardName}
+                      onChange={handleChange}
+                      className={`w-full bg-neutral-900 border ${errors.cardName ? 'border-red-500' : 'border-neutral-600'} rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all`}
+                    />
+                    {errors.cardName && <p className="text-red-500 text-xs mt-1">{errors.cardName}</p>}
+                  </div>
 
-                <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                   {['日', '一', '二', '三', '四', '五', '六'].map(d => (
-                     <span key={d} className="text-xs text-gray-500 font-bold py-1">{d}</span>
-                   ))}
-                </div>
+                  <div className="flex gap-4">
+                    <div className="w-1/2">
+                      <label className="block text-gray-400 text-sm mb-2">到期日 (MM/YY)</label>
+                      <input
+                        type="text"
+                        name="expiry"
+                        placeholder="MM/YY"
+                        value={formData.expiry}
+                        onChange={handleChange}
+                        maxLength={5}
+                        className={`w-full bg-neutral-900 border ${errors.expiry ? 'border-red-500' : 'border-neutral-600'} rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all`}
+                      />
+                      {errors.expiry && <p className="text-red-500 text-xs mt-1">{errors.expiry}</p>}
+                    </div>
 
-                <div className="grid grid-cols-7 gap-1">
-                  {blanks.map(blank => (
-                    <div key={`blank-${blank}`} className="h-9 w-9"></div>
-                  ))}
-
-                  {daysArray.map(day => {
-                    const disabled = isDateDisabled(day);
-                    const selected = isSelected(day);
-                    return (
-                      <button
-                        key={day}
-                        disabled={disabled}
-                        onClick={() => handleDateClick(day)}
-                        className={`
-                          h-9 w-9 mx-auto rounded-full flex items-center justify-center text-sm transition-all
-                          ${selected 
-                            ? 'bg-purple-600 text-white font-bold shadow-md' 
-                            : disabled 
-                              ? 'text-gray-500 opacity-20 cursor-default'
-                              : 'text-gray-300 hover:bg-neutral-700 hover:text-white cursor-pointer'
-                          }
-                        `}
-                      >
-                        {day}
-                      </button>
-                    );
-                  })}
+                    <div className="w-1/2">
+                      <label className="block text-gray-400 text-sm mb-2">安全碼 (CVV)</label>
+                      <input
+                        type="text"
+                        name="cvv"
+                        placeholder="123"
+                        value={formData.cvv}
+                        onChange={handleChange}
+                        maxLength={4}
+                        className={`w-full bg-neutral-900 border ${errors.cvv ? 'border-red-500' : 'border-neutral-600'} rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all`}
+                      />
+                      {errors.cvv && <p className="text-red-500 text-xs mt-1">{errors.cvv}</p>}
+                    </div>
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
-        </div>
 
-        {/* 電影列表 */}
-        <div className="space-y-6 max-w-6xl mx-auto">
-          {loading ? (
-            <div className="flex justify-center items-center py-20">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
-            </div>
-          ) : filteredMovies.length === 0 ? (
-            <div className="text-center py-20 text-gray-400">
-                <p className="text-xl">目前沒有相符的電影場次</p>
-            </div>
-          ) : (
-            filteredMovies.map(movie => (
-              <ShowtimeMovieCard 
-                key={movie.movieId} 
-                movie={movie} 
-                theatreId={selectedTheatre}
-                selectedDate={formattedSelectedDate}
-                onError={handleSelectionError}
-              />
-            ))
-          )}
+              {/* 按鈕區 */}
+              <div className="flex gap-4 mt-8 pt-4 border-t border-neutral-700">
+                  <button 
+                    type="button"
+                    onClick={() => navigate(-1)}
+                    className="w-1/3 bg-neutral-700 hover:bg-neutral-600 text-white font-bold py-4 rounded-full transition duration-300"
+                  >
+                    返回
+                  </button>
+
+                  <button 
+                    type="submit"
+                    disabled={isProcessing}
+                    className={`w-2/3 font-bold py-4 rounded-full transition duration-300 text-lg shadow-lg flex justify-center items-center gap-2
+                      ${isProcessing 
+                        ? 'bg-neutral-600 text-gray-400 cursor-wait' 
+                        : 'bg-purple-600 hover:bg-purple-700 text-white hover:shadow-purple-500/50 transform hover:-translate-y-1'
+                      }`}
+                  >
+                    {isProcessing ? (
+                      <>
+                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        處理中...
+                      </>
+                    ) : (
+                      `確認付款 $ ${bookingData.totalPrice}`
+                    )}
+                  </button>
+              </div>
+
+            </form>
+          </div>
+
         </div>
       </main>
     </div>
   );
 }
 
-export default ShowtimePage;
-
+export default PaymentPage;
